@@ -30,6 +30,25 @@ const SCENES = [
 const MAIN_VIDEO =
   "https://storage.googleapis.com/marketing-project-1/marketing-video2.mp4"; // your Veo video
 
+// 🔧 Helper to fix partial / wrong URLs from the model
+const normalizeUrl = (raw) => {
+  if (!raw) return null;
+
+  // Add https:// if missing
+  if (!raw.startsWith("http")) {
+    raw = "https://" + raw.replace(/^\/+/, "");
+  }
+
+  // If it’s something like "https://googleapis.com/marketing-project-1/marketing-video2.mp4"
+  // convert to "https://storage.googleapis.com/marketing-project-1/marketing-video2.mp4"
+  if (raw.includes("googleapis.com/") && !raw.includes("storage.googleapis.com/")) {
+    const path = raw.split("googleapis.com/")[1] || "";
+    raw = "https://storage.googleapis.com/" + path.replace(/^\/+/, "");
+  }
+
+  return raw;
+};
+
 function App() {
   const [messages, setMessages] = useState([
     {
@@ -57,10 +76,16 @@ function App() {
     return null;
   };
 
+  // 🔁 UPDATED: handle full + partial URLs and normalize them
   const extractFirstUrl = (text) => {
-    const urlRegex = /(https?:\/\/[^\s)]+)/i;
+    const urlRegex =
+      /(https?:\/\/[^\s)]+)|((?:\w+\.)+\w+\/[^\s)]+)/i;
+
     const match = text.match(urlRegex);
-    return match ? match[1] : null;
+    if (!match) return null;
+
+    const raw = match[1] || match[2];
+    return normalizeUrl(raw);
   };
 
   const sendMessage = async () => {
@@ -124,26 +149,51 @@ function App() {
     }
   };
 
+  // 🔁 UPDATED: use normalizeUrl for links inside messages too
   const renderMessageText = (text) => {
-    const urlRegex = /(https?:\/\/[^\s]+)/g;
-    const parts = text.split(urlRegex);
+    const urlRegex =
+      /(https?:\/\/[^\s]+)|((?:\w+\.)+\w+\/[^\s]+)/g;
 
-    return parts.map((part, idx) => {
-      if (part.match(urlRegex)) {
-        return (
-          <a
-            key={idx}
-            href={part}
-            target="_blank"
-            rel="noreferrer"
-            className="msg-link"
-          >
-            {part}
-          </a>
-        );
+    const parts = [];
+    let lastIndex = 0;
+    let match;
+
+    while ((match = urlRegex.exec(text)) !== null) {
+      const [fullMatch, fullUrl, partialUrl] = match;
+      const start = match.index;
+
+      if (start > lastIndex) {
+        parts.push(text.slice(lastIndex, start));
       }
-      return <span key={idx}>{part}</span>;
-    });
+
+      const normalized = normalizeUrl(fullUrl || partialUrl);
+
+      parts.push(
+        <a
+          key={parts.length}
+          href={normalized}
+          target="_blank"
+          rel="noreferrer"
+          className="msg-link"
+        >
+          {normalized}
+        </a>
+      );
+
+      lastIndex = start + fullMatch.length;
+    }
+
+    if (lastIndex < text.length) {
+      parts.push(text.slice(lastIndex));
+    }
+
+    if (parts.length === 0) {
+      return <span>{text}</span>;
+    }
+
+    return parts.map((part, idx) =>
+      typeof part === "string" ? <span key={idx}>{part}</span> : part
+    );
   };
 
   return (
@@ -318,3 +368,4 @@ function App() {
 }
 
 export default App;
+ 
